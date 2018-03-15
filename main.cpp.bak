@@ -1,0 +1,2000 @@
+#include "basicHeader.h"
+#include "draw.h"
+#include "ShaderProgram.h"
+#include "Camera.h"
+#include "Model.h"
+#include "Mesh.h"
+#include "Function.h"
+
+#include <iostream>
+#include <map>
+#include <vector>
+
+using namespace std;
+using namespace OpenGLLearn;
+
+
+//window dimensions
+constexpr GLuint WIDTH = 800, HEIGHT = 600;
+GLfloat lastX = WIDTH/2, lastY = HEIGHT/2;
+GLfloat mixValue = 0.0f;
+bool keys[1024];
+
+Camera camera(glm::vec3(0.0f, 0.0f, 3.0f));
+glm::vec3 lightPos(1.0f, 1.0f, 1.0f);
+glm::vec3 dirLightDirection(-0.2f, -1.0f, -0.3f);
+
+
+#if 1
+int main(int argc, char *argv[])
+{
+	//initialize GLFW library
+	glfwInit();
+
+	//set all the required options for GLFW
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+	glfwWindowHint(GLFW_RESIZABLE, GL_FALSE);
+
+	//create a window
+	GLFWwindow *window = glfwCreateWindow(WIDTH, HEIGHT, "LearnOpenGL", nullptr, nullptr);
+	if (nullptr == window) {
+		cerr << "Failed to create GLFW window" << endl;
+		glfwTerminate();
+		return EXIT_FAILURE;
+	}
+	glfwMakeContextCurrent(window);
+
+	// Set the required callback functions  
+	glfwSetKeyCallback(window, key_callback);
+
+	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+	glfwSetCursorPosCallback(window, mouse_callback);
+	glfwSetScrollCallback(window, scroll_callback);
+
+	glewExperimental = GL_TRUE;
+
+	//init glew
+	GLenum err = glewInit();
+	if (GLEW_OK != err) {
+		cerr << "Failed to initialize GLEW " << glewGetErrorString(err) << endl;
+		return EXIT_FAILURE;
+	}
+
+	//define the viewport dimensions
+	int width, height;
+	glfwGetFramebufferSize(window, &width, &height);
+	glViewport(0, 0, width, height);
+
+	glEnable(GL_DEPTH_TEST);
+	glDepthFunc(GL_LESS);
+
+	map<GLenum, const GLchar*> shaderPath;
+	shaderPath.emplace(GL_VERTEX_SHADER, "ShaderSrc/SkyBox/nanosuitvs.glsl");
+	shaderPath.emplace(GL_FRAGMENT_SHADER, "ShaderSrc/SkyBox/nanosuitfs.glsl");
+	ShaderProgram skyBoxShader(shaderPath);
+
+	shaderPath.clear();
+	shaderPath.emplace(GL_VERTEX_SHADER, "ShaderSrc/Cube/nanosuitvs.glsl");
+	shaderPath.emplace(GL_FRAGMENT_SHADER, "ShaderSrc/Cube/nanosuitfs.glsl");
+	ShaderProgram cubeShader(shaderPath);
+
+	GLfloat cubeVertices[] = {
+		// Positions          // Normals
+		-0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,
+		0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,
+		0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,
+		0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,
+		-0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,
+		-0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,
+
+		-0.5f, -0.5f,  0.5f,  0.0f,  0.0f, 1.0f,
+		0.5f, -0.5f,  0.5f,  0.0f,  0.0f, 1.0f,
+		0.5f,  0.5f,  0.5f,  0.0f,  0.0f, 1.0f,
+		0.5f,  0.5f,  0.5f,  0.0f,  0.0f, 1.0f,
+		-0.5f,  0.5f,  0.5f,  0.0f,  0.0f, 1.0f,
+		-0.5f, -0.5f,  0.5f,  0.0f,  0.0f, 1.0f,
+
+		-0.5f,  0.5f,  0.5f, -1.0f,  0.0f,  0.0f,
+		-0.5f,  0.5f, -0.5f, -1.0f,  0.0f,  0.0f,
+		-0.5f, -0.5f, -0.5f, -1.0f,  0.0f,  0.0f,
+		-0.5f, -0.5f, -0.5f, -1.0f,  0.0f,  0.0f,
+		-0.5f, -0.5f,  0.5f, -1.0f,  0.0f,  0.0f,
+		-0.5f,  0.5f,  0.5f, -1.0f,  0.0f,  0.0f,
+
+		0.5f,  0.5f,  0.5f,  1.0f,  0.0f,  0.0f,
+		0.5f,  0.5f, -0.5f,  1.0f,  0.0f,  0.0f,
+		0.5f, -0.5f, -0.5f,  1.0f,  0.0f,  0.0f,
+		0.5f, -0.5f, -0.5f,  1.0f,  0.0f,  0.0f,
+		0.5f, -0.5f,  0.5f,  1.0f,  0.0f,  0.0f,
+		0.5f,  0.5f,  0.5f,  1.0f,  0.0f,  0.0f,
+
+		-0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,
+		0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,
+		0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,
+		0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,
+		-0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,
+		-0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,
+
+		-0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,
+		0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,
+		0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,
+		0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,
+		-0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,
+		-0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f
+	};
+
+	GLfloat skyboxVertices[] = {
+		// Positions          
+		-1.0f,  1.0f, -1.0f,
+		-1.0f, -1.0f, -1.0f,
+		1.0f, -1.0f, -1.0f,
+		1.0f, -1.0f, -1.0f,
+		1.0f,  1.0f, -1.0f,
+		-1.0f,  1.0f, -1.0f,
+
+		-1.0f, -1.0f,  1.0f,
+		-1.0f, -1.0f, -1.0f,
+		-1.0f,  1.0f, -1.0f,
+		-1.0f,  1.0f, -1.0f,
+		-1.0f,  1.0f,  1.0f,
+		-1.0f, -1.0f,  1.0f,
+
+		1.0f, -1.0f, -1.0f,
+		1.0f, -1.0f,  1.0f,
+		1.0f,  1.0f,  1.0f,
+		1.0f,  1.0f,  1.0f,
+		1.0f,  1.0f, -1.0f,
+		1.0f, -1.0f, -1.0f,
+
+		-1.0f, -1.0f,  1.0f,
+		-1.0f,  1.0f,  1.0f,
+		1.0f,  1.0f,  1.0f,
+		1.0f,  1.0f,  1.0f,
+		1.0f, -1.0f,  1.0f,
+		-1.0f, -1.0f,  1.0f,
+
+		-1.0f,  1.0f, -1.0f,
+		1.0f,  1.0f, -1.0f,
+		1.0f,  1.0f,  1.0f,
+		1.0f,  1.0f,  1.0f,
+		-1.0f,  1.0f,  1.0f,
+		-1.0f,  1.0f, -1.0f,
+
+		-1.0f, -1.0f, -1.0f,
+		-1.0f, -1.0f,  1.0f,
+		1.0f, -1.0f, -1.0f,
+		1.0f, -1.0f, -1.0f,
+		-1.0f, -1.0f,  1.0f,
+		1.0f, -1.0f,  1.0f
+	};
+
+	//skybox
+	GLuint skyBoxVao, skyBoxVbo;
+	glGenVertexArrays(1, &skyBoxVao);
+	glGenBuffers(1, &skyBoxVbo);
+	glBindVertexArray(skyBoxVbo);
+
+	glBindBuffer(GL_ARRAY_BUFFER, skyBoxVbo);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(skyboxVertices), skyboxVertices, GL_STATIC_DRAW);
+
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (GLvoid*)0);
+	
+	glBindVertexArray(0);
+
+	//����skybox����
+	vector<const GLchar*> skyBoxFace;
+	skyBoxFace.push_back("Texture/SkyBox/right.jpg");
+	skyBoxFace.push_back("Texture/SkyBox/left.jpg");
+	skyBoxFace.push_back("Texture/SkyBox/top.jpg");
+	skyBoxFace.push_back("Texture/SkyBox/bottom.jpg");
+	skyBoxFace.push_back("Texture/SkyBox/back.jpg");
+	skyBoxFace.push_back("Texture/SkyBox/front.jpg");
+
+	GLuint skyBoxTexture = loadCubeMap(skyBoxFace);
+	
+	//3D ������
+	GLuint cubeVao, cubeVbo;
+	glGenVertexArrays(1, &cubeVao);
+	glGenBuffers(1, &cubeVbo);
+	glBindVertexArray(cubeVbo);
+
+	glBindBuffer(GL_ARRAY_BUFFER, cubeVbo);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(cubeVertices), cubeVertices, GL_STATIC_DRAW);
+
+	glEnableVertexAttribArray(0);
+	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), (GLvoid*)0);
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), (GLvoid*)(3 * sizeof(GLfloat)));
+	
+	glBindVertexArray(0);
+
+	GLfloat deltaTime = 0.0f;//����֡��ʱ���
+	GLfloat lastFrame = 0.0f;//��һ֡��ʱ��
+
+	//����ģ��
+	shaderPath.clear();
+	shaderPath.emplace(GL_VERTEX_SHADER, "ShaderSrc/NanoSuitReflect/nanosuitvs.glsl");
+	shaderPath.emplace(GL_FRAGMENT_SHADER, "ShaderSrc/NanoSuitReflect/nanosuitfs.glsl");
+	ShaderProgram nanoShader(shaderPath);
+	Model nanoSuitModel("Model/NanoSuitReflect/nanosuit.obj");
+
+	while (!glfwWindowShouldClose(window)) {
+		// Check if any events have been activiated (key pressed, mouse moved etc.) and call corresponding response functions  
+		glfwPollEvents();
+
+		GLfloat currentFrame = glfwGetTime();
+		deltaTime = currentFrame - lastFrame;
+		lastFrame = currentFrame;
+
+		// Clear buffers
+		glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+		//������ƶ�
+		do_movement(deltaTime);
+
+		//����������
+		cubeShader.useProgram();
+
+		glBindVertexArray(cubeVao);
+
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_CUBE_MAP, skyBoxTexture);
+		glUniform1i(glGetUniformLocation(cubeShader.getProgramId(), "skybox"), 0);
+		glm::mat4 model, view, projection;;
+		view = camera.getViewMatrix();
+		projection = glm::perspective(camera.getViewZoom(),
+			static_cast<float>(width) / static_cast<float>(height), 0.1f, 100.f);
+		glUniformMatrix4fv(glGetUniformLocation(cubeShader.getProgramId(), "model"), 1, GL_FALSE, glm::value_ptr(model));
+		glUniformMatrix4fv(glGetUniformLocation(cubeShader.getProgramId(), "view"), 1, GL_FALSE, glm::value_ptr(view));
+		glUniformMatrix4fv(glGetUniformLocation(cubeShader.getProgramId(), "projection"), 1, GL_FALSE, glm::value_ptr(projection));
+
+		glUniform3f(glGetUniformLocation(cubeShader.getProgramId(), "cameraPos"), camera.getPositon().x, camera.getPositon().y, camera.getPositon().y);
+		glDrawArrays(GL_TRIANGLES, 0, 36);
+
+		glBindVertexArray(0);
+
+		//����ģ��
+		nanoShader.useProgram();
+
+		model = glm::mat4();
+		model = glm::translate(model, glm::vec3(1.5f, -0.5f, 0.0f));
+		model = glm::scale(model, glm::vec3(0.2f));
+		glUniformMatrix4fv(glGetUniformLocation(nanoShader.getProgramId(), "model"), 1, GL_FALSE, glm::value_ptr(model));
+		glUniformMatrix4fv(glGetUniformLocation(nanoShader.getProgramId(), "view"), 1, GL_FALSE, glm::value_ptr(view));
+		glUniformMatrix4fv(glGetUniformLocation(nanoShader.getProgramId(), "projection"), 1, GL_FALSE, glm::value_ptr(projection));
+		glUniform3f(glGetUniformLocation(nanoShader.getProgramId(), "cameraPos"), camera.getPositon().x, camera.getPositon().y, camera.getPositon().y);
+		
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_CUBE_MAP, skyBoxTexture);
+		glUniform1i(glGetUniformLocation(nanoShader.getProgramId(), "skybox"), 0);
+
+		nanoSuitModel.draw(nanoShader);
+
+		//����skybox
+		glDepthFunc(GL_LEQUAL);
+		skyBoxShader.useProgram();
+
+		glBindVertexArray(skyBoxVao);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_CUBE_MAP, skyBoxTexture);
+		glUniform1i(glGetUniformLocation(skyBoxShader.getProgramId(), "skybox"), 0);
+		
+		view = glm::mat4(glm::mat3(camera.getViewMatrix()));
+		glUniformMatrix4fv(glGetUniformLocation(skyBoxShader.getProgramId(), "view"), 1, GL_FALSE, glm::value_ptr(view));
+		glUniformMatrix4fv(glGetUniformLocation(skyBoxShader.getProgramId(), "projection"), 1, GL_FALSE, glm::value_ptr(projection));
+		
+		glDrawArrays(GL_TRIANGLES, 0, 36);
+		glBindVertexArray(0);
+
+		glDepthFunc(GL_LESS);
+
+		// Swap the screen buffers, double buffer
+		glfwSwapBuffers(window);
+	}
+
+	glDeleteVertexArrays(1, &skyBoxVao);
+	glDeleteBuffers(1, &skyBoxVbo);
+
+	glfwTerminate();
+
+	return EXIT_SUCCESS;
+}
+#endif
+
+/*ģ�ͼ��أ�ģ����ԣ�����ģ������*/
+#if 0
+int main(int argc, char *argv[])
+{
+	//initialize GLFW library
+	glfwInit();
+
+	//set all the required options for GLFW
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+	glfwWindowHint(GLFW_RESIZABLE, GL_FALSE);
+
+	//create a window
+	GLFWwindow *window = glfwCreateWindow(WIDTH, HEIGHT, "LearnOpenGL", nullptr, nullptr);
+	if (nullptr == window) 
+	{
+		cerr << "Failed to create GLFW window" << endl;
+		glfwTerminate();
+		return EXIT_FAILURE;
+	}
+	glfwMakeContextCurrent(window);
+
+	// Set the required callback functions  
+	glfwSetKeyCallback(window, key_callback);
+
+	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+	glfwSetCursorPosCallback(window, mouse_callback);
+	glfwSetScrollCallback(window, scroll_callback);
+
+	glewExperimental = GL_TRUE;
+
+	//init glew
+	GLenum err = glewInit();
+	if (GLEW_OK != err) 
+	{
+		cerr << "Failed to initialize GLEW " << glewGetErrorString(err) << endl;
+		return EXIT_FAILURE;
+	}
+
+	//define the viewport dimensions
+	int width, height;
+	glfwGetFramebufferSize(window, &width, &height);
+	glViewport(0, 0, width, height);
+
+	//������Ȳ���
+	glEnable(GL_DEPTH_TEST);
+	glDepthFunc(GL_LESS);
+
+	//����ģ�����
+	glEnable(GL_STENCIL_TEST);
+	//��λģ�建��
+	glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
+	glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+
+	//����object shader����
+	map<GLenum, const GLchar*> shaderPath;
+	shaderPath.emplace(GL_VERTEX_SHADER, "ShaderSrc/NanoSuit/nanosuitvs.glsl");
+	shaderPath.emplace(GL_FRAGMENT_SHADER, "ShaderSrc/NanoSuit/shader.frag");
+	ShaderProgram modelShader(shaderPath);
+
+	shaderPath.clear();
+	shaderPath.emplace(GL_VERTEX_SHADER, "ShaderSrc/StencilTest/nanosuitvs.glsl");
+	shaderPath.emplace(GL_FRAGMENT_SHADER, "ShaderSrc/StencilTest/shader.frag");
+	ShaderProgram outlinShader(shaderPath);
+
+	GLfloat deltaTime = 0.0f;//����֡��ʱ���
+	GLfloat lastFrame = 0.0f;//��һ֡��ʱ��
+
+	//����ģ��
+	Model nanoSuitModel("Model/NanoSuit/nanosuit.obj");
+
+	while (!glfwWindowShouldClose(window)) 
+	{
+		// Check if any events have been activiated (key pressed, mouse moved etc.) and call corresponding response functions  
+		glfwPollEvents();
+
+		GLfloat currentFrame = glfwGetTime();
+		deltaTime = currentFrame - lastFrame;
+		lastFrame = currentFrame;
+
+		//������ƶ�
+		do_movement(deltaTime);
+
+		// Clear the colorbuffer  
+		glClearColor(0.2f, 0.2f, 0.2f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);//�����ģ�建��
+
+		modelShader.useProgram();
+		
+		glm::mat4 model, view, projection;
+		model = glm::translate(model, glm::vec3(0.0f, -1.75f, -1.0f));
+		model = glm::scale(model, glm::vec3(0.2f, 0.2f, 0.2f));
+		view = camera.getViewMatrix();
+		projection = glm::perspective(camera.getViewZoom(),
+			static_cast<float>(width) / static_cast<float>(height), 0.1f, 100.f);
+		//����uniform������shader����
+		glUniformMatrix4fv(glGetUniformLocation(modelShader.getProgramId(), "model"),
+			1, GL_FALSE, glm::value_ptr((model)));
+		glUniformMatrix4fv(glGetUniformLocation(modelShader.getProgramId(), "view"),
+			1, GL_FALSE, glm::value_ptr(view));
+		glUniformMatrix4fv(glGetUniformLocation(modelShader.getProgramId(), "projection"),
+			1, GL_FALSE, glm::value_ptr(projection));
+
+		//����ͨ��ģ����ԣ���������ģ��Ϊ1
+		glStencilFunc(GL_ALWAYS, 1, 0xFF);
+		glStencilMask(0xFF);//����ģ�建���д
+
+		//����ģ��
+		nanoSuitModel.draw(modelShader);
+		
+		//����ģ������
+		glStencilFunc(GL_NOTEQUAL, 1, 0xff);//��1ʱͨ��ģ����ԣ���ʾֻ��������
+		glStencilMask(0x00);//ģ��ֻ��
+		glDisable(GL_DEPTH_TEST);
+
+		outlinShader.useProgram();
+		//���Ʊ߿�
+		nanoSuitModel.draw(modelShader);
+		model = glm::scale(model, glm::vec3(1.005f));
+		glUniformMatrix4fv(glGetUniformLocation(modelShader.getProgramId(), "model"),
+			1, GL_FALSE, glm::value_ptr((model)));
+		glUniformMatrix4fv(glGetUniformLocation(modelShader.getProgramId(), "view"),
+			1, GL_FALSE, glm::value_ptr(view));
+		glUniformMatrix4fv(glGetUniformLocation(modelShader.getProgramId(), "projection"),
+			1, GL_FALSE, glm::value_ptr(projection));
+
+		glStencilMask(0xff);
+		glEnable(GL_DEPTH_TEST);
+
+		// Swap the screen buffers, double buffer
+		glfwSwapBuffers(window);
+	}
+
+	glfwTerminate();
+
+	return EXIT_SUCCESS;
+}
+#endif
+
+/*���ղ�����ͼԭ��*/
+#if 0
+int main(int argc, char *argv[])
+{
+	//initialize GLFW library
+	glfwInit();
+
+	//set all the required options for GLFW
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+	glfwWindowHint(GLFW_RESIZABLE, GL_FALSE);
+
+	//create a window
+	GLFWwindow *window = glfwCreateWindow(WIDTH, HEIGHT, "LearnOpenGL", nullptr, nullptr);
+	if (nullptr == window) {
+		cerr << "Failed to create GLFW window" << endl;
+		glfwTerminate();
+		return EXIT_FAILURE;
+	}
+	glfwMakeContextCurrent(window);
+
+	// Set the required callback functions  
+	glfwSetKeyCallback(window, key_callback);
+
+	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+	glfwSetCursorPosCallback(window, mouse_callback);
+	glfwSetScrollCallback(window, scroll_callback);
+
+	glewExperimental = GL_TRUE;
+
+	//init glew
+	GLenum err = glewInit();
+	if (GLEW_OK != err) {
+		cerr << "Failed to initialize GLEW " << glewGetErrorString(err) << endl;
+		return EXIT_FAILURE;
+	}
+
+	//define the viewport dimensions
+	int width, height;
+	glfwGetFramebufferSize(window, &width, &height);
+	glViewport(0, 0, width, height);
+
+	glEnable(GL_DEPTH_TEST);
+
+	//������Դshader
+	map<GLenum, const GLchar*> shaderPath;
+	shaderPath.emplace(GL_VERTEX_SHADER, "ShaderSrc/Light/nanosuitvs.glsl");
+	shaderPath.emplace(GL_FRAGMENT_SHADER, "ShaderSrc/Light/shader.frag");
+	ShaderProgram lightShader(shaderPath);
+
+	//����object shader����
+	shaderPath.clear();
+	shaderPath.emplace(GL_VERTEX_SHADER, "ShaderSrc/object/shaderLightTexture.vertex");
+	shaderPath.emplace(GL_FRAGMENT_SHADER, "ShaderSrc/object/shaderLightTexture.frag");
+	ShaderProgram objectShader(shaderPath);
+
+	GLfloat vertices[] = {
+		// Positions           // Normals           // Texture Coords
+		-0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f, 0.0f,
+		0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  1.0f, 0.0f,
+		0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  1.0f, 1.0f,
+		0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  1.0f, 1.0f,
+		-0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f, 1.0f,
+		-0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f, 0.0f,
+
+		-0.5f, -0.5f,  0.5f,  0.0f,  0.0f, 1.0f,   0.0f, 0.0f,
+		0.5f, -0.5f,  0.5f,  0.0f,  0.0f, 1.0f,   1.0f, 0.0f,
+		0.5f,  0.5f,  0.5f,  0.0f,  0.0f, 1.0f,   1.0f, 1.0f,
+		0.5f,  0.5f,  0.5f,  0.0f,  0.0f, 1.0f,   1.0f, 1.0f,
+		-0.5f,  0.5f,  0.5f,  0.0f,  0.0f, 1.0f,   0.0f, 1.0f,
+		-0.5f, -0.5f,  0.5f,  0.0f,  0.0f, 1.0f,   0.0f, 0.0f,
+
+		-0.5f,  0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  1.0f, 0.0f,
+		-0.5f,  0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  1.0f, 1.0f,
+		-0.5f, -0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  0.0f, 1.0f,
+		-0.5f, -0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  0.0f, 1.0f,
+		-0.5f, -0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  0.0f, 0.0f,
+		-0.5f,  0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  1.0f, 0.0f,
+
+		0.5f,  0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f,
+		0.5f,  0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f,
+		0.5f, -0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  0.0f, 1.0f,
+		0.5f, -0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  0.0f, 1.0f,
+		0.5f, -0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  0.0f, 0.0f,
+		0.5f,  0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f,
+
+		-0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  0.0f, 1.0f,
+		0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  1.0f, 1.0f,
+		0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  1.0f, 0.0f,
+		0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  1.0f, 0.0f,
+		-0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  0.0f, 0.0f,
+		-0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  0.0f, 1.0f,
+
+		-0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  0.0f, 1.0f,
+		0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  1.0f, 1.0f,
+		0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  1.0f, 0.0f,
+		0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  1.0f, 0.0f,
+		-0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  0.0f, 0.0f,
+		-0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  0.0f, 1.0f
+	};
+
+	//��������
+	GLuint vbo3d;
+	glGenBuffers(1, &vbo3d);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo3d);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+	//����
+	GLuint objectVao;
+	glGenVertexArrays(1, &objectVao);
+	glBindVertexArray(objectVao);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo3d);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (GLvoid*)0);
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (GLvoid*)(3 * sizeof(GLfloat)));
+	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (GLvoid*)(6 * sizeof(GLfloat)));
+	glEnableVertexAttribArray(0);
+	glEnableVertexAttribArray(1);
+	glEnableVertexAttribArray(2);
+	glBindVertexArray(0);
+	//��������
+	GLuint diffuseMap;
+	int texWidth, texHeight;
+	glGenTextures(1, &diffuseMap);
+	glBindTexture(GL_TEXTURE_2D, diffuseMap);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+	unsigned char *image = SOIL_load_image("Texture/container2.png", &texWidth, &texHeight, 0, SOIL_LOAD_RGB);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, texWidth, texHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, image);
+	glGenerateMipmap(GL_TEXTURE_2D);
+	SOIL_free_image_data(image);
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+	GLuint specularMap;
+	glGenTextures(1, &specularMap);
+	glBindTexture(GL_TEXTURE_2D, specularMap);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+	image = SOIL_load_image("Texture/container2_specular.png", &texWidth, &texHeight, 0, SOIL_LOAD_RGB);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, texWidth, texHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, image);
+	glGenerateMipmap(GL_TEXTURE_2D);
+	SOIL_free_image_data(image);
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+	GLuint emissionMap;
+	glGenTextures(1, &emissionMap);
+	glBindTexture(GL_TEXTURE_2D, emissionMap);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+	image = SOIL_load_image("Texture/matrix.jpg", &texWidth, &texHeight, 0, SOIL_LOAD_RGB);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, texWidth, texHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, image);
+	glGenerateMipmap(GL_TEXTURE_2D);
+	SOIL_free_image_data(image);
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+	//light ��Դ
+	GLuint lightVao;
+	glGenVertexArrays(1, &lightVao);
+	glBindVertexArray(lightVao);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo3d);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (GLvoid*)0);
+	glEnableVertexAttribArray(0);
+	glBindVertexArray(0);
+
+	//���ƶ������
+	glm::vec3 cubePositions[] = {
+		glm::vec3(0.0f,  0.0f,  0.0f),
+		glm::vec3(2.0f,  5.0f, -15.0f),
+		glm::vec3(-1.5f, -2.2f, -2.5f),
+		glm::vec3(-3.8f, -2.0f, -12.3f),
+		glm::vec3(2.4f, -0.4f, -3.5f),
+		glm::vec3(-1.7f,  3.0f, -7.5f),
+		glm::vec3(1.3f, -2.0f, -2.5f),
+		glm::vec3(1.5f,  2.0f, -2.5f),
+		glm::vec3(1.5f,  0.2f, -1.5f),
+		glm::vec3(-1.3f,  1.0f, -1.5f)
+	};
+
+	GLfloat deltaTime = 0.0f;//����֡��ʱ���
+	GLfloat lastFrame = 0.0f;//��һ֡��ʱ��
+
+							 //��������
+	glUseProgram(objectShader.getProgramId());
+	//������ͼ
+	glUniform1i(glGetUniformLocation(objectShader.getProgramId(), "material.diffuse"), 0);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, diffuseMap);
+
+	glUniform1i(glGetUniformLocation(objectShader.getProgramId(), "material.specular"), 1);
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, specularMap);
+
+	//glUniform1i(glGetUniformLocation(objectShader.getProgramId(), "material.emission"), 2);
+	//glActiveTexture(GL_TEXTURE2);
+	//glBindTexture(GL_TEXTURE_2D, emissionMap);
+	glUniform1f(glGetUniformLocation(objectShader.getProgramId(), "material.shininess"), 32.0f);
+
+	//���ֹ�Դ�ı���
+	glUniform3f(glGetUniformLocation(objectShader.getProgramId(), "lightType"), 0.0f, 1.0f, 0.0f);
+	//�����
+	glUniform3f(glGetUniformLocation(objectShader.getProgramId(), "dirLight.ambient"), 0.2f, 0.2f, 0.2f);
+	glUniform3f(glGetUniformLocation(objectShader.getProgramId(), "dirLight.diffuse"), 0.5f, 0.5f, 0.5f);
+	glUniform3f(glGetUniformLocation(objectShader.getProgramId(), "dirLight.specular"), 1.0f, 1.0f, 1.0f);
+	//���Դ
+	glUniform1f(glGetUniformLocation(objectShader.getProgramId(), "pointLight.constant"), 1.0f);
+	glUniform1f(glGetUniformLocation(objectShader.getProgramId(), "pointLight.linear"), 0.09);
+	glUniform1f(glGetUniformLocation(objectShader.getProgramId(), "pointLight.quadratic"), 0.032);
+	glUniform3f(glGetUniformLocation(objectShader.getProgramId(), "pointLight.ambient"), 0.2f, 0.2f, 0.2f);
+	glUniform3f(glGetUniformLocation(objectShader.getProgramId(), "pointLight.diffuse"), 0.8f, 0.8f, 0.8f);
+	glUniform3f(glGetUniformLocation(objectShader.getProgramId(), "pointLight.specular"), 1.0f, 1.0f, 1.0f);
+	//�۹�
+	glUniform1f(glGetUniformLocation(objectShader.getProgramId(), "spotLight.inCutOff"),
+		glm::cos(glm::radians(12.5f)));
+	glUniform1f(glGetUniformLocation(objectShader.getProgramId(), "spotLight.outCutOff"),
+		glm::cos(glm::radians(17.5f)));
+	glUniform1f(glGetUniformLocation(objectShader.getProgramId(), "spotLight.constant"), 1.0f);
+	glUniform1f(glGetUniformLocation(objectShader.getProgramId(), "spotLight.linear"), 0.09);
+	glUniform1f(glGetUniformLocation(objectShader.getProgramId(), "spotLight.quadratic"), 0.032);
+	glUniform3f(glGetUniformLocation(objectShader.getProgramId(), "spotLight.ambient"), 0.2f, 0.2f, 0.2f);
+	glUniform3f(glGetUniformLocation(objectShader.getProgramId(), "spotLight.diffuse"), 0.5f, 0.5f, 0.5f);
+	glUniform3f(glGetUniformLocation(objectShader.getProgramId(), "spotLight.specular"), 1.0f, 1.0f, 1.0f);
+
+	while (!glfwWindowShouldClose(window)) {
+		// Check if any events have been activiated (key pressed, mouse moved etc.) and call corresponding response functions  
+		glfwPollEvents();
+
+		GLfloat currentFrame = glfwGetTime();
+		deltaTime = currentFrame - lastFrame;
+		lastFrame = currentFrame;
+
+		//��Դ�ƶ�
+		//lightPos.x = cos(currentFrame) * glm::length(lightPos*glm::vec3(0.9f));
+		//lightPos.z = sin(currentFrame) * glm::length(lightPos*glm::vec3(0.9f));
+		lightPos.x = 1.0f + sin(glfwGetTime()) * 2.0f;
+		lightPos.y = sin(glfwGetTime() / 2.0f) * 1.0f;
+
+		//������ƶ�
+		do_movement(deltaTime);
+
+		// Clear the colorbuffer  
+		glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+		//���ù�Դ
+		glUseProgram(lightShader.getProgramId());
+
+		GLuint modelLoc, viewLoc, projLoc;
+		modelLoc = glGetUniformLocation(lightShader.getProgramId(), "model");
+		viewLoc = glGetUniformLocation(lightShader.getProgramId(), "view");
+		projLoc = glGetUniformLocation(lightShader.getProgramId(), "projection");
+
+		glm::mat4 model, view, projection;
+		model = glm::translate(model, lightPos);
+		model = glm::scale(model, glm::vec3(0.2f));
+		glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+
+		view = camera.getViewMatrix();
+		glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
+
+		projection = glm::perspective(camera.getViewZoom(),
+			static_cast<float>(width) / static_cast<float>(height), 0.1f, 100.f);
+		glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
+
+		//���ƹ�Դ
+		glBindVertexArray(lightVao);
+		glDrawArrays(GL_TRIANGLES, 0, 36);
+		glBindVertexArray(0);
+
+		//��������
+		glUseProgram(objectShader.getProgramId());
+
+		modelLoc = glGetUniformLocation(objectShader.getProgramId(), "model");
+		viewLoc = glGetUniformLocation(objectShader.getProgramId(), "view");
+		projLoc = glGetUniformLocation(objectShader.getProgramId(), "projection");
+
+		GLuint viewPosLoc = glGetUniformLocation(objectShader.getProgramId(), "viewPos");
+		GLuint normalMatrixLoc = glGetUniformLocation(objectShader.getProgramId(), "normalMatrix");
+		glUniform3f(viewPosLoc, camera.getPositon().x, camera.getPositon().y, camera.getPositon().z);
+		glm::mat3 normalMatrix = glm::mat3(glm::transpose(glm::inverse(model)));//�������
+		glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(normalMatrix));
+
+		//�����
+		glUniform3f(glGetUniformLocation(objectShader.getProgramId(), "dirLight.direction"),
+			dirLightDirection.x, dirLightDirection.y, dirLightDirection.z);
+
+		//���Դ
+		glUniform3f(glGetUniformLocation(objectShader.getProgramId(), "pointLight.position"),
+			lightPos.x, lightPos.y, lightPos.z);
+
+		//�۹�
+		glUniform3f(glGetUniformLocation(objectShader.getProgramId(), "spotLight.position"),
+			camera.getPositon().x, camera.getPositon().y, camera.getPositon().z);
+		glUniform3f(glGetUniformLocation(objectShader.getProgramId(), "spotLight.direction"),
+			camera.getFront().x, camera.getFront().y, camera.getFront().z);
+
+
+		glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
+		glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
+
+		for (size_t i = 0; i < 10; ++i) {
+			model = glm::mat4();
+			model = glm::translate(model, cubePositions[i]);
+			model = glm::rotate(model, 20.f * i, glm::vec3(1.0f, 0.3f, 0.5f));
+			glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr((model)));
+
+			glBindVertexArray(objectVao);
+			glDrawArrays(GL_TRIANGLES, 0, 36);
+			glBindVertexArray(0);
+		}
+
+		// Swap the screen buffers, double buffer
+		glfwSwapBuffers(window);
+}
+
+	glDisable(GL_DEPTH_TEST);
+
+	glDeleteVertexArrays(1, &objectVao);
+	glDeleteVertexArrays(1, &lightVao);
+	glDeleteBuffers(1, &vbo3d);
+
+	glfwTerminate();
+
+	return EXIT_SUCCESS;
+}
+#endif
+
+/*ģ�ⵥ������Ĳ��ʺ͹��յ�Ӱ�죬��ɫ��ϲ��ԣ����޳���֡����*/
+#if 0
+int main(int argc, char *argv[])
+{
+	//initialize GLFW library
+	glfwInit();
+
+	//set all the required options for GLFW
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+	glfwWindowHint(GLFW_RESIZABLE, GL_FALSE);
+
+	//create a window
+	GLFWwindow *window = glfwCreateWindow(WIDTH, HEIGHT, "LearnOpenGL", nullptr, nullptr);
+	if (nullptr == window) {
+		cerr << "Failed to create GLFW window" << endl;
+		glfwTerminate();
+		return EXIT_FAILURE;
+	}
+	glfwMakeContextCurrent(window);
+
+	// Set the required callback functions  
+	glfwSetKeyCallback(window, key_callback);
+
+	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+	glfwSetCursorPosCallback(window, mouse_callback);
+	glfwSetScrollCallback(window, scroll_callback);
+
+	glewExperimental = GL_TRUE;
+
+	//init glew
+	GLenum err = glewInit();
+	if (GLEW_OK != err) {
+		cerr << "Failed to initialize GLEW " << glewGetErrorString(err) << endl;
+		return EXIT_FAILURE;
+	}
+
+	//define the viewport dimensions
+	int width, height;
+	glfwGetFramebufferSize(window, &width, &height);
+	glViewport(0, 0, width, height);
+
+	glEnable(GL_DEPTH_TEST);
+
+	//�������
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+	//������Դshader
+	map<GLenum, const GLchar*> shaderPath;
+	shaderPath.emplace(GL_VERTEX_SHADER, "ShaderSrc/Light/nanosuitvs.glsl");
+	shaderPath.emplace(GL_FRAGMENT_SHADER, "ShaderSrc/Light/shader.frag");
+	ShaderProgram lightShader(shaderPath);
+
+	//����object shader����
+	shaderPath.clear();
+	shaderPath.emplace(GL_VERTEX_SHADER, "ShaderSrc/object/shader3d.vertex");
+	shaderPath.emplace(GL_FRAGMENT_SHADER, "ShaderSrc/object/shader3d.frag");
+	ShaderProgram objectShader(shaderPath);
+
+	//����grass shader����
+	shaderPath.clear();
+	shaderPath.emplace(GL_VERTEX_SHADER, "ShaderSrc/Grass/nanosuitvs.glsl");
+	shaderPath.emplace(GL_FRAGMENT_SHADER, "ShaderSrc/Grass/shader.frag");
+	ShaderProgram grassShader(shaderPath);
+
+	//����framebuffer shader����
+	shaderPath.clear();
+	shaderPath.emplace(GL_VERTEX_SHADER, "ShaderSrc/FrameBuffer/nanosuitvs.glsl");
+	shaderPath.emplace(GL_FRAGMENT_SHADER, "ShaderSrc/FrameBuffer/shader.frag");
+	ShaderProgram frameBufferShader(shaderPath);
+
+	//������Ķ���
+	//���꣬����
+	GLfloat vertices[] = {
+		//back
+		-0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,
+		0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,
+		0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,
+		0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,
+		-0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,
+		-0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,
+		//front
+		-0.5f, -0.5f,  0.5f,  0.0f,  0.0f, 1.0f,
+		0.5f, -0.5f,  0.5f,  0.0f,  0.0f, 1.0f,
+		0.5f,  0.5f,  0.5f,  0.0f,  0.0f, 1.0f,
+		0.5f,  0.5f,  0.5f,  0.0f,  0.0f, 1.0f,
+		-0.5f,  0.5f,  0.5f,  0.0f,  0.0f, 1.0f,
+		-0.5f, -0.5f,  0.5f,  0.0f,  0.0f, 1.0f,
+		//left
+		-0.5f,  0.5f,  0.5f, -1.0f,  0.0f,  0.0f,
+		-0.5f,  0.5f, -0.5f, -1.0f,  0.0f,  0.0f,
+		-0.5f, -0.5f, -0.5f, -1.0f,  0.0f,  0.0f,
+		-0.5f, -0.5f, -0.5f, -1.0f,  0.0f,  0.0f,
+		-0.5f, -0.5f,  0.5f, -1.0f,  0.0f,  0.0f,
+		-0.5f,  0.5f,  0.5f, -1.0f,  0.0f,  0.0f,
+		//right
+		0.5f,  0.5f,  0.5f,  1.0f,  0.0f,  0.0f,
+		0.5f,  0.5f, -0.5f,  1.0f,  0.0f,  0.0f,
+		0.5f, -0.5f, -0.5f,  1.0f,  0.0f,  0.0f,
+		0.5f, -0.5f, -0.5f,  1.0f,  0.0f,  0.0f,
+		0.5f, -0.5f,  0.5f,  1.0f,  0.0f,  0.0f,
+		0.5f,  0.5f,  0.5f,  1.0f,  0.0f,  0.0f,
+		//bottom
+		-0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,
+		0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,
+		0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,
+		0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,
+		-0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,
+		-0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,
+		//top
+		-0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,
+		0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,
+		0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,
+		0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,
+		-0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,
+		-0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f
+	};
+
+	//���꣬���ߣ���������
+	GLfloat cubeVertices[] = {
+		// Back face
+		-0.5f, -0.5f, -0.5f, 0.0f,  0.0f, -1.0f, 0.0f, 0.0f, // Bottom-left
+		0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f, 1.0f, 1.0f, // top-right
+		0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f, 1.0f, 0.0f, // bottom-right         
+		0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f, 1.0f, 1.0f, // top-right
+		-0.5f, -0.5f, -0.5f, 0.0f,  0.0f, -1.0f, 0.0f, 0.0f, // bottom-left
+		-0.5f,  0.5f, -0.5f, 0.0f,  0.0f, -1.0f, 0.0f, 1.0f, // top-left
+		// Front face
+		-0.5f, -0.5f,  0.5f, 0.0f,  0.0f, 1.0f, 0.0f, 0.0f, // bottom-left
+		0.5f, -0.5f,  0.5f,  0.0f,  0.0f, 1.0f, 1.0f, 0.0f, // bottom-right
+		0.5f,  0.5f,  0.5f,  0.0f,  0.0f, 1.0f, 1.0f, 1.0f, // top-right
+		0.5f,  0.5f,  0.5f,  0.0f,  0.0f, 1.0f, 1.0f, 1.0f, // top-right
+		-0.5f,  0.5f,  0.5f, 0.0f,  0.0f, 1.0f, 0.0f, 1.0f, // top-left
+		-0.5f, -0.5f,  0.5f, 0.0f,  0.0f, 1.0f, 0.0f, 0.0f, // bottom-left
+		// Left face
+		-0.5f,  0.5f,  0.5f,  -1.0f,  0.0f,  0.0f, 1.0f, 0.0f, // top-right
+		-0.5f,  0.5f, -0.5f,  -1.0f,  0.0f,  0.0f, 1.0f, 1.0f, // top-left
+		-0.5f, -0.5f, -0.5f,  -1.0f,  0.0f,  0.0f, 0.0f, 1.0f, // bottom-left
+		-0.5f, -0.5f, -0.5f,  -1.0f,  0.0f,  0.0f, 0.0f, 1.0f, // bottom-left
+		-0.5f, -0.5f,  0.5f,  -1.0f,  0.0f,  0.0f, 0.0f, 0.0f, // bottom-right
+		-0.5f,  0.5f,  0.5f,  -1.0f,  0.0f,  0.0f, 1.0f, 0.0f, // top-right
+		// Right face
+		0.5f,  0.5f,  0.5f,  1.0f,  0.0f,  0.0f, 1.0f, 0.0f, // top-left
+		0.5f, -0.5f, -0.5f,  1.0f,  0.0f,  0.0f, 0.0f, 1.0f, // bottom-right
+		0.5f,  0.5f, -0.5f,  1.0f,  0.0f,  0.0f, 1.0f, 1.0f, // top-right         
+		0.5f, -0.5f, -0.5f,  1.0f,  0.0f,  0.0f, 0.0f, 1.0f, // bottom-right
+		0.5f,  0.5f,  0.5f,  1.0f,  0.0f,  0.0f, 1.0f, 0.0f, // top-left
+		0.5f, -0.5f,  0.5f,  1.0f,  0.0f,  0.0f, 0.0f, 0.0f, // bottom-left     
+		// Bottom face
+		-0.5f, -0.5f, -0.5f, 0.0f,  -1.0f,  0.0f, 0.0f, 1.0f, // top-right
+		0.5f, -0.5f, -0.5f,  0.0f,  -1.0f,  0.0f, 1.0f, 1.0f, // top-left
+		0.5f, -0.5f,  0.5f,  0.0f,  -1.0f,  0.0f, 1.0f, 0.0f, // bottom-left
+		0.5f, -0.5f,  0.5f,  0.0f,  -1.0f,  0.0f, 1.0f, 0.0f, // bottom-left
+		-0.5f, -0.5f,  0.5f, 0.0f,  -1.0f,  0.0f, 0.0f, 0.0f, // bottom-right
+		-0.5f, -0.5f, -0.5f, 0.0f,  -1.0f,  0.0f, 0.0f, 1.0f, // top-right
+		// Top face
+		-0.5f,  0.5f, -0.5f, 0.0f,  1.0f,  0.0f, 0.0f, 1.0f, // top-left
+		0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f, 1.0f, 0.0f, // bottom-right
+		0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f, 1.0f, 1.0f, // top-right     
+		0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f, 1.0f, 0.0f, // bottom-right
+		-0.5f,  0.5f, -0.5f, 0.0f,  1.0f,  0.0f, 0.0f, 1.0f, // top-left
+		-0.5f,  0.5f,  0.5f, 0.0f,  1.0f,  0.0f, 0.0f, 0.0f  // bottom-left        
+	};
+
+	GLuint indices[] = {  // Note that we start from 0!
+		0, 1, 3,  // First Triangle
+		1, 2, 3   // Second Triangle
+	};
+
+	GLfloat grassvs[] = {
+		//     ---- λ�� ----       ---- ��ɫ ----     - �������� -
+		0.5f,  0.5f, 0.0f,   1.0f, 0.0f, 0.0f,   1.0f, 1.0f,   // ����
+		0.5f, -0.5f, 0.0f,   0.0f, 1.0f, 0.0f,   1.0f, 0.0f,   // ����
+		-0.5f, -0.5f, 0.0f,   0.0f, 0.0f, 1.0f,   0.0f, 0.0f,   // ����
+		-0.5f,  0.5f, 0.0f,   1.0f, 1.0f, 0.0f,   0.0f, 1.0f    // ����
+	};
+
+	//��������buffer
+	GLuint vbo3d;
+	glGenBuffers(1, &vbo3d);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo3d);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(cubeVertices), cubeVertices, GL_STATIC_DRAW);
+
+	//������vao
+	GLuint objectVao;
+	glGenVertexArrays(1, &objectVao);
+	glBindVertexArray(objectVao);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo3d);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (GLvoid*)0);
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (GLvoid*)(3 * sizeof(GLfloat)));
+	glEnableVertexAttribArray(0);
+	glEnableVertexAttribArray(1);
+	glBindVertexArray(0);
+
+	//light ��Դvao
+	GLuint lightVao;
+	glGenVertexArrays(1, &lightVao);
+	glBindVertexArray(lightVao);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo3d);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (GLvoid*)0);
+	glEnableVertexAttribArray(0);
+	glBindVertexArray(0);
+
+	//grass
+	GLuint grassVao, grassVbo, grassEbo;
+	glGenVertexArrays(1, &grassVao);
+	glBindVertexArray(grassVao);
+
+	glGenBuffers(1, &grassVbo);
+	glBindBuffer(GL_ARRAY_BUFFER, grassVbo);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(grassvs), grassvs, GL_STATIC_DRAW);
+
+	glGenBuffers(1, &grassEbo);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, grassEbo);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (GLvoid*)0);
+	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (GLvoid*)(6*sizeof(GLfloat)));
+	glEnableVertexAttribArray(0);
+	glEnableVertexAttribArray(2);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glBindVertexArray(0);
+
+	//����
+	GLuint grassTexture, windowTexture;
+
+	grassTexture = loadTexture("Texture/grass.png", true);
+	windowTexture = loadTexture("Texture/blending_transparent_window.png", true);
+
+	vector<glm::vec3> vegetation;
+	vegetation.push_back(glm::vec3(-1.5f, 0.0f, -0.48f));
+	vegetation.push_back(glm::vec3(1.5f, 0.0f, 0.51f));
+	vegetation.push_back(glm::vec3(0.0f, 0.0f, 0.7f));
+	vegetation.push_back(glm::vec3(-0.3f, 0.0f, -2.3f));
+	vegetation.push_back(glm::vec3(0.5f, 0.0f, -0.6f));
+
+	//����֡����
+	GLuint framebuffer;
+	glGenFramebuffers(1, &framebuffer);
+	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+	//�������ӵ�֡�������ɫ����������ͼ��
+	GLuint texColorBuffer;
+	glGenTextures(1, &texColorBuffer);
+	glBindTexture(GL_TEXTURE_2D, texColorBuffer);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, WIDTH, HEIGHT, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glBindTexture(GL_TEXTURE_2D, 0);
+	//��������󸽼ӵ�֡�����е���ɫ������
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texColorBuffer, 0);
+	//�����ȡ�ģ�帽��:��������ֻ������ɫ���壬���������������壬���ǿ��Դ���һ����Ⱦ����������ﵽ���Ŀ�ġ�
+	GLuint rbo;
+	glGenRenderbuffers(1, &rbo);
+	glBindRenderbuffer(GL_RENDERBUFFER, rbo);
+	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, WIDTH, HEIGHT);
+	glBindRenderbuffer(GL_RENDERBUFFER, 0);
+	//����Ⱦ������󸽼ӵ�֡�������Ⱥ�ģ�帽����
+	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
+	//���֡����
+	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+	{
+		cerr << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << endl;
+	}
+	//���֡���壬����������Ⱦ�������֡�����ϡ�
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	GLfloat deltaTime = 0.0f;//����֡��ʱ���
+	GLfloat lastFrame = 0.0f;//��һ֡��ʱ��
+
+	while (!glfwWindowShouldClose(window)) {
+		// Check if any events have been activiated (key pressed, mouse moved etc.) and call corresponding response functions  
+		glfwPollEvents();
+
+		GLfloat currentFrame = glfwGetTime();
+		deltaTime = currentFrame - lastFrame;
+		lastFrame = currentFrame;
+
+		//��Դ�ƶ�
+		lightPos.x = 1.0f + sin(glfwGetTime()) * 2.0f;
+		lightPos.y = sin(glfwGetTime() / 2.0f) * 1.0f;
+
+		//������ƶ�
+		do_movement(deltaTime);
+
+		//�󶨵�������framebuffer��
+		glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+		glEnable(GL_DEPTH_TEST);
+		// Clear the colorbuffer  
+		glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+		//���ù�Դ
+		glUseProgram(lightShader.getProgramId());
+
+#pragma region "draw mirrow"
+		//��Դ��λ�úʹ�С
+		glm::mat4 model, view, projection;
+		model = glm::translate(model, lightPos);
+		model = glm::scale(model, glm::vec3(0.2f));
+		camera.setYawDelta(180.0f);
+		camera.setPtichDelta(180.0f);
+		camera.processMouseMovement(0, 0, false);
+		view = camera.getViewMatrix();
+		projection = glm::perspective(camera.getViewZoom(),
+			static_cast<float>(width) / static_cast<float>(height), 0.1f, 100.f);
+
+		glUniformMatrix4fv(glGetUniformLocation(lightShader.getProgramId(), "model"), 1, GL_FALSE, glm::value_ptr(model));
+		glUniformMatrix4fv(glGetUniformLocation(lightShader.getProgramId(), "view"), 1, GL_FALSE, glm::value_ptr(view));
+		glUniformMatrix4fv(glGetUniformLocation(lightShader.getProgramId(), "projection"), 1, GL_FALSE, glm::value_ptr(projection));
+		
+		//�������޳�
+		glEnable(GL_CULL_FACE);
+		glCullFace(GL_BACK);//�޳�����
+		glFrontFace(GL_CCW);//��ʱ����������
+		//���ƹ�Դ
+		glBindVertexArray(lightVao);
+		glDrawArrays(GL_TRIANGLES, 0, 36);
+		glBindVertexArray(0);
+
+		glUseProgram(objectShader.getProgramId());
+
+		//���ݹ�Դ��λ�ú��������λ��
+		glUniform3f(glGetUniformLocation(objectShader.getProgramId(), "light.position"), lightPos.x, lightPos.y, lightPos.z);
+		glUniform3f(glGetUniformLocation(objectShader.getProgramId(), "viewPos"), camera.getPositon().x, camera.getPositon().y, camera.getPositon().z);
+		glm::mat3 normalMatrix = glm::mat3(glm::transpose(glm::inverse(model)));
+		glUniformMatrix3fv(glGetUniformLocation(objectShader.getProgramId(), "normalMatrix"), 1, GL_FALSE, glm::value_ptr(normalMatrix));
+
+		//��������Ĳ���
+		glUniform3f(glGetUniformLocation(objectShader.getProgramId(), "material.ambient"), 1.0f, 0.5f, 0.31f);
+		glUniform3f(glGetUniformLocation(objectShader.getProgramId(), "material.diffuse"), 1.0f, 0.5f, 0.31f);
+		glUniform3f(glGetUniformLocation(objectShader.getProgramId(), "material.specular"), 0.5f, 0.5f, 0.5f);
+		glUniform1f(glGetUniformLocation(objectShader.getProgramId(), "material.shininess"), 32.0f);
+
+		//���ù�Ĳ���
+		glUniform3f(glGetUniformLocation(objectShader.getProgramId(), "light.ambient"), 0.2f, 0.2f, 0.2f);
+		glUniform3f(glGetUniformLocation(objectShader.getProgramId(), "light.diffuse"), 0.5f, 0.5f, 0.5f);// �����ǰ���������һ�㣬�����ῴ��������Ȼ
+		glUniform3f(glGetUniformLocation(objectShader.getProgramId(), "light.specular"), 1.0f, 1.0f, 1.0f);
+
+		model = glm::mat4();
+		model = glm::translate(model, glm::vec3(0.0f, 0.0f, 0.0f));
+		glUniformMatrix4fv(glGetUniformLocation(lightShader.getProgramId(), "model"), 1, GL_FALSE, glm::value_ptr((model)));
+		glUniformMatrix4fv(glGetUniformLocation(lightShader.getProgramId(), "view"), 1, GL_FALSE, glm::value_ptr(view));
+		glUniformMatrix4fv(glGetUniformLocation(lightShader.getProgramId(), "projection"), 1, GL_FALSE, glm::value_ptr(projection));
+
+		glBindVertexArray(objectVao);
+		glDrawArrays(GL_TRIANGLES, 0, 36);
+		glBindVertexArray(0);
+
+		//����С��
+		glDisable(GL_CULL_FACE);
+		grassShader.useProgram();
+
+		model = glm::mat4();
+		model = glm::translate(model, glm::vec3(1.0f, -1.0f, 0.0f));
+		glUniformMatrix4fv(glGetUniformLocation(grassShader.getProgramId(), "model"), 1, GL_FALSE, glm::value_ptr((model)));
+		glUniformMatrix4fv(glGetUniformLocation(grassShader.getProgramId(), "view"), 1, GL_FALSE, glm::value_ptr(view));
+		glUniformMatrix4fv(glGetUniformLocation(grassShader.getProgramId(), "projection"), 1, GL_FALSE, glm::value_ptr(projection));
+
+		glBindVertexArray(grassVao);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, grassTexture);
+		glUniform1i(glGetUniformLocation(grassShader.getProgramId(), "texture1"), 0);
+		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+		glBindVertexArray(0);
+
+		//���Ʋ�ͬ��windowTexture
+		//ȷ����Զ�����Ļ���͸��������,ʹ�ú���Ƶ�͸�����岻���ڸ���ǰ���Ƶ�͸������
+		map<float, glm::vec3> sorted;
+		for (vector<glm::vec3>::size_type i = 0; i < vegetation.size(); i++)
+		{
+			GLfloat distance = glm::length(camera.getPositon() - vegetation[i]);
+			sorted[distance] = vegetation[i];
+		}
+
+		//����grassVao ����windowTexture
+		glBindVertexArray(grassVao);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, windowTexture);
+		glUniform1i(glGetUniformLocation(grassShader.getProgramId(), "texture1"), 0);
+		GLuint modelLoc = glGetUniformLocation(grassShader.getProgramId(), "model");
+		for (auto it=sorted.rbegin(); it != sorted.rend(); ++it)
+		{
+			model = glm::mat4();
+			model = glm::translate(model, it->second);
+			glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr((model)));
+			glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+		}
+		glBindVertexArray(0);
+#pragma endregion 
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+
+#pragma region "draw normal scene"
+		
+		//���ù�Դ
+		glUseProgram(lightShader.getProgramId());
+
+		//��Դ��λ�úʹ�С
+		model = glm::mat4();
+		model = glm::translate(model, lightPos);
+		model = glm::scale(model, glm::vec3(0.2f));
+		camera.setYawDelta(-180.0f);
+		camera.setPtichDelta(-180.0f);
+		camera.processMouseMovement(0, 0, false);
+		view = camera.getViewMatrix();
+		projection = glm::perspective(camera.getViewZoom(),
+			static_cast<float>(width) / static_cast<float>(height), 0.1f, 100.f);
+
+		glUniformMatrix4fv(glGetUniformLocation(lightShader.getProgramId(), "model"), 1, GL_FALSE, glm::value_ptr(model));
+		glUniformMatrix4fv(glGetUniformLocation(lightShader.getProgramId(), "view"), 1, GL_FALSE, glm::value_ptr(view));
+		glUniformMatrix4fv(glGetUniformLocation(lightShader.getProgramId(), "projection"), 1, GL_FALSE, glm::value_ptr(projection));
+		
+		//�������޳�
+		glEnable(GL_CULL_FACE);
+		glCullFace(GL_BACK);//�޳�����
+		glFrontFace(GL_CCW);//��ʱ����������
+		
+		//���ƹ�Դ
+		glBindVertexArray(lightVao);
+		glDrawArrays(GL_TRIANGLES, 0, 36);
+		glBindVertexArray(0);
+
+		glUseProgram(objectShader.getProgramId());
+
+		//���ݹ�Դ��λ�ú��������λ��
+		glUniform3f(glGetUniformLocation(objectShader.getProgramId(), "light.position"), lightPos.x, lightPos.y, lightPos.z);
+		glUniform3f(glGetUniformLocation(objectShader.getProgramId(), "viewPos"), camera.getPositon().x, camera.getPositon().y, camera.getPositon().z);
+		glm::mat3 normalMatrix1 = glm::mat3(glm::transpose(glm::inverse(model)));
+		glUniformMatrix3fv(glGetUniformLocation(objectShader.getProgramId(), "normalMatrix"), 1, GL_FALSE, glm::value_ptr(normalMatrix1));
+
+		//��������Ĳ���
+		glUniform3f(glGetUniformLocation(objectShader.getProgramId(), "material.ambient"), 1.0f, 0.5f, 0.31f);
+		glUniform3f(glGetUniformLocation(objectShader.getProgramId(), "material.diffuse"), 1.0f, 0.5f, 0.31f);
+		glUniform3f(glGetUniformLocation(objectShader.getProgramId(), "material.specular"), 0.5f, 0.5f, 0.5f);
+		glUniform1f(glGetUniformLocation(objectShader.getProgramId(), "material.shininess"), 32.0f);
+
+		//���ù�Ĳ���
+		glUniform3f(glGetUniformLocation(objectShader.getProgramId(), "light.ambient"), 0.2f, 0.2f, 0.2f);
+		glUniform3f(glGetUniformLocation(objectShader.getProgramId(), "light.diffuse"), 0.5f, 0.5f, 0.5f);// �����ǰ���������һ�㣬�����ῴ��������Ȼ
+		glUniform3f(glGetUniformLocation(objectShader.getProgramId(), "light.specular"), 1.0f, 1.0f, 1.0f);
+
+		model = glm::mat4();
+		model = glm::translate(model, glm::vec3(0.0f, 0.0f, 0.0f));
+		glUniformMatrix4fv(glGetUniformLocation(lightShader.getProgramId(), "model"), 1, GL_FALSE, glm::value_ptr((model)));
+		glUniformMatrix4fv(glGetUniformLocation(lightShader.getProgramId(), "view"), 1, GL_FALSE, glm::value_ptr(view));
+		glUniformMatrix4fv(glGetUniformLocation(lightShader.getProgramId(), "projection"), 1, GL_FALSE, glm::value_ptr(projection));
+
+		glBindVertexArray(objectVao);
+		glDrawArrays(GL_TRIANGLES, 0, 36);
+		glBindVertexArray(0);
+
+		//����С��
+		glDisable(GL_CULL_FACE);
+		grassShader.useProgram();
+
+		model = glm::mat4();
+		model = glm::translate(model, glm::vec3(1.0f, -1.0f, 0.0f));
+		glUniformMatrix4fv(glGetUniformLocation(grassShader.getProgramId(), "model"), 1, GL_FALSE, glm::value_ptr((model)));
+		glUniformMatrix4fv(glGetUniformLocation(grassShader.getProgramId(), "view"), 1, GL_FALSE, glm::value_ptr(view));
+		glUniformMatrix4fv(glGetUniformLocation(grassShader.getProgramId(), "projection"), 1, GL_FALSE, glm::value_ptr(projection));
+
+		glBindVertexArray(grassVao);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, grassTexture);
+		glUniform1i(glGetUniformLocation(grassShader.getProgramId(), "texture1"), 0);
+		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+		glBindVertexArray(0);
+
+		//���Ʋ�ͬ��windowTexture
+		//ȷ����Զ�����Ļ���͸��������,ʹ�ú���Ƶ�͸�����岻���ڸ���ǰ���Ƶ�͸������
+		map<float, glm::vec3> sorted1;
+		for (vector<glm::vec3>::size_type i = 0; i < vegetation.size(); i++)
+		{
+			GLfloat distance = glm::length(camera.getPositon() - vegetation[i]);
+			sorted1[distance] = vegetation[i];
+		}
+
+		//����grassVao ����windowTexture
+		glBindVertexArray(grassVao);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, windowTexture);
+		glUniform1i(glGetUniformLocation(grassShader.getProgramId(), "texture1"), 0);
+		GLuint modelLoc1 = glGetUniformLocation(grassShader.getProgramId(), "model");
+		for (auto it = sorted1.rbegin(); it != sorted1.rend(); ++it)
+		{
+			model = glm::mat4();
+			model = glm::translate(model, it->second);
+			glUniformMatrix4fv(modelLoc1, 1, GL_FALSE, glm::value_ptr((model)));
+			glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+		}
+		glBindVertexArray(0);
+#pragma endregion
+		glDisable(GL_DEPTH_TEST);
+		//��֮ǰ������framebuffer�е���ɫ����ֱ�ӻ�����Ĭ��framebuffer��
+		frameBufferShader.useProgram();
+
+		model = glm::mat4();
+		model = glm::scale(model, glm::vec3(0.5f));
+		model = glm::translate(model, glm::vec3(1.5f, -1.5f, 0.0f));
+		glUniformMatrix4fv(glGetUniformLocation(frameBufferShader.getProgramId(), "model"), 1, GL_FALSE, glm::value_ptr(model));
+
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, texColorBuffer);
+		glUniform1i(glGetUniformLocation(frameBufferShader.getProgramId(), "screenTexture"), 0);
+		//����grassVao����
+		glBindVertexArray(grassVao);
+		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+		glBindVertexArray(0);
+
+		// Swap the screen buffers, double buffer
+		glfwSwapBuffers(window);
+	}
+
+	glDisable(GL_DEPTH_TEST);
+
+	glDeleteFramebuffers(1, &framebuffer);
+	glDeleteVertexArrays(1, &objectVao);
+	glDeleteVertexArrays(1, &lightVao);
+	glDeleteVertexArrays(1, &grassVao);
+	glDeleteBuffers(1, &vbo3d);
+
+	glfwTerminate();
+
+	return EXIT_SUCCESS;
+}
+#endif
+
+/*��������� 3d*/
+#if 0
+int main(int argc, char *argv[])
+{
+	//initialize GLFW library
+	glfwInit();
+
+	//set all the required options for GLFW
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+	glfwWindowHint(GLFW_RESIZABLE, GL_FALSE);
+
+	//create a window
+	GLFWwindow *window = glfwCreateWindow(WIDTH, HEIGHT, "LearnOpenGL", nullptr, nullptr);
+	if (nullptr == window) {
+		cerr << "Failed to create GLFW window" << endl;
+		glfwTerminate();
+		return EXIT_FAILURE;
+	}
+	glfwMakeContextCurrent(window);
+
+	// Set the required callback functions  
+	glfwSetKeyCallback(window, key_callback);
+
+	glewExperimental = GL_TRUE;
+
+	//init glew
+	GLenum err = glewInit();
+	if (GLEW_OK != err) {
+		cerr << "Failed to initialize GLEW " << glewGetErrorString(err) << endl;
+		return EXIT_FAILURE;
+	}
+
+	//define the viewport dimensions
+	int width, height;
+	glfwGetFramebufferSize(window, &width, &height);
+	glViewport(0, 0, width, height);
+
+	glEnable(GL_DEPTH_TEST);
+
+	//����shader����
+	map<GLenum, const GLchar*> shaderPath;
+	shaderPath.emplace(GL_VERTEX_SHADER, "ShaderSrc/shader3d.vertex");
+	shaderPath.emplace(GL_FRAGMENT_SHADER, "ShaderSrc/shader3d.frag");
+	ShaderProgram shaderProgram(shaderPath);
+	
+	GLfloat vertices[] = {
+		//     ---- λ�� ----       ---- ��ɫ ----     - �������� -
+		0.5f,  0.5f, 0.0f,   1.0f, 0.0f, 0.0f,   1.0f, 1.0f,   // ����
+		0.5f, -0.5f, 0.0f,   0.0f, 1.0f, 0.0f,   1.0f, 0.0f,   // ����
+		-0.5f, -0.5f, 0.0f,   0.0f, 0.0f, 1.0f,   0.0f, 0.0f,   // ����
+		-0.5f,  0.5f, 0.0f,   1.0f, 1.0f, 0.0f,   0.0f, 1.0f    // ����
+	};
+
+	GLfloat vertices3d[] = {
+		-0.5f, -0.5f, -0.5f,  0.0f, 0.0f,
+		0.5f, -0.5f, -0.5f,  1.0f, 0.0f,
+		0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+		0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+		-0.5f,  0.5f, -0.5f,  0.0f, 1.0f,
+		-0.5f, -0.5f, -0.5f,  0.0f, 0.0f,
+
+		-0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+		0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
+		0.5f,  0.5f,  0.5f,  1.0f, 1.0f,
+		0.5f,  0.5f,  0.5f,  1.0f, 1.0f,
+		-0.5f,  0.5f,  0.5f,  0.0f, 1.0f,
+		-0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+
+		-0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+		-0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+		-0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+		-0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+		-0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+		-0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+
+		0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+		0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+		0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+		0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+		0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+		0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+
+		-0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+		0.5f, -0.5f, -0.5f,  1.0f, 1.0f,
+		0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
+		0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
+		-0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+		-0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+
+		-0.5f,  0.5f, -0.5f,  0.0f, 1.0f,
+		0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+		0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+		0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+		-0.5f,  0.5f,  0.5f,  0.0f, 0.0f,
+		-0.5f,  0.5f, -0.5f,  0.0f, 1.0f
+	};
+
+	GLuint indices[] = {  // Note that we start from 0!
+		0, 1, 3,  // First Triangle
+		1, 2, 3   // Second Triangle
+	};
+	//3D ������
+	GLuint vao3d, vbo3d;
+	glGenVertexArrays(1, &vao3d);
+	glGenBuffers(1, &vbo3d);
+	glBindVertexArray(vao3d);
+
+	glBindBuffer(GL_ARRAY_BUFFER, vbo3d);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices3d), vertices3d, GL_STATIC_DRAW);
+
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (GLvoid*)0);
+	glEnableVertexAttribArray(0);
+
+	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (GLvoid*)(3*sizeof(GLfloat)));
+	glEnableVertexAttribArray(2);
+
+	glBindVertexArray(0);
+
+	//2dƽ��
+	GLuint vao, vbo, ebo;
+	glGenVertexArrays(1, &vao);
+	glGenBuffers(1, &vbo);
+	glGenBuffers(1, &ebo);
+	// Bind the Vertex Array object first, then bind and set vertex buffer(s) and attribute pointer(s).
+	glBindVertexArray(vao);
+
+	glBindBuffer(GL_ARRAY_BUFFER, vbo);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+
+	//λ������
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (GLvoid*)0);
+	glEnableVertexAttribArray(0);
+
+	//��������
+	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (GLvoid*)(6 * sizeof(GLfloat)));
+	glEnableVertexAttribArray(2);
+
+	glBindVertexArray(0); 
+
+	//��������
+	GLuint texture[2];
+	int texWidth, texHeight;
+
+	glGenTextures(2, texture);
+	glBindTexture(GL_TEXTURE_2D, texture[0]);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+	unsigned char *image = SOIL_load_image("Texture/container.jpg", &texWidth, &texHeight, 0, SOIL_LOAD_RGB);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, texWidth, texHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, image);
+	glGenerateMipmap(GL_TEXTURE_2D);
+	SOIL_free_image_data(image);
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+	glBindTexture(GL_TEXTURE_2D, texture[1]);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+	image = SOIL_load_image("Texture/container1.jpg", &texWidth, &texHeight, 0, SOIL_LOAD_RGB);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, texWidth, texHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, image);
+	glGenerateMipmap(GL_TEXTURE_2D);
+	SOIL_free_image_data(image);
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+	glm::vec3 cubePositions[] = {
+		glm::vec3(0.0f,  0.0f,  0.0f),
+		glm::vec3(2.0f,  5.0f, -15.0f),
+		glm::vec3(-1.5f, -2.2f, -2.5f),
+		glm::vec3(-3.8f, -2.0f, -12.3f),
+		glm::vec3(2.4f, -0.4f, -3.5f),
+		glm::vec3(-1.7f,  3.0f, -7.5f),
+		glm::vec3(1.3f, -2.0f, -2.5f),
+		glm::vec3(1.5f,  2.0f, -2.5f),
+		glm::vec3(1.5f,  0.2f, -1.5f),
+		glm::vec3(-1.3f,  1.0f, -1.5f)
+	};
+	
+	//���������������ռ䣬�ɴ˿ɶ��������������ת��Ϊ��ͼ�ռ�ľ���Look At����
+	glm::vec3 cameraPos = glm::vec3(0.0f, 0.0f, 3.0f);
+	glm::vec3 cameraTarget = glm::vec3(0.0f, 0.0f, 0.0f);
+	glm::vec3 cameraDirection = glm::normalize(cameraPos - cameraTarget);
+
+	glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
+	glm::vec3 cameraRight = glm::normalize(glm::cross(up, cameraDirection));
+	glm::vec3 cameraUp = glm::normalize(glm::cross(cameraDirection, cameraRight));
+	
+
+	//Look At ����
+	glm::mat4 view;
+	view = glm::lookAt(cameraPos, cameraTarget, up);
+	
+
+	while (!glfwWindowShouldClose(window)) {
+		// Check if any events have been activiated (key pressed, mouse moved etc.) and call corresponding response functions  
+		glfwPollEvents();
+
+		// Clear the colorbuffer  
+		glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+		glUseProgram(shaderProgram.getProgramId());//������ɫ������
+
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, texture[0]);
+		glUniform1i(glGetUniformLocation(shaderProgram.getProgramId(), "texture1"), 0);
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, texture[1]);
+		glUniform1i(glGetUniformLocation(shaderProgram.getProgramId(), "texture2"), 1);
+		
+		glUniform1f(glGetUniformLocation(shaderProgram.getProgramId(), "mixWeight"), mixValue);
+
+		glm::mat4 projection;
+		
+		projection = glm::perspective(glm::radians(45.0f),
+		static_cast<float>(width) / static_cast<float>(height), 0.1f, 100.f);
+
+		GLuint modelLoc = glGetUniformLocation(shaderProgram.getProgramId(), "model");
+		GLuint viewLoc = glGetUniformLocation(shaderProgram.getProgramId(), "view");
+		GLuint projLoc = glGetUniformLocation(shaderProgram.getProgramId(), "projection");
+		
+		glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
+
+		glBindVertexArray(vao3d);
+		for (GLuint i = 0; i < 10; i++) {
+			//model
+			glm::mat4 model;
+			model = glm::translate(model, cubePositions[i]);
+			model = glm::rotate(model, glm::radians(static_cast<float>(i)*20.0f), glm::vec3(1.0f, 0.3f, 0.5f));
+			glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+			//view
+			GLfloat radius = 10.0f;
+			GLfloat fai = 90.0f * sin(glfwGetTime()/50.0);
+			GLfloat theta = glfwGetTime();
+			GLfloat camX = sin(fai) * cos(theta) * radius;
+			GLfloat camY = sin(fai) * sin(theta) * radius;
+			GLfloat camZ = cos(fai) * radius;
+
+			glm::mat4 view;
+			view = glm::lookAt(glm::vec3(camX, camY, camZ), glm::vec3(0.0, 0.0, 0.0), glm::vec3(0.0, 1.0, 0.0));
+			glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
+
+			glDrawArrays(GL_TRIANGLES, 0, 36);
+		}
+		glBindVertexArray(0);
+
+		// Swap the screen buffers, double buffer
+		glfwSwapBuffers(window);
+	}
+	
+	glDisable(GL_DEPTH_TEST);
+
+	glDeleteVertexArrays(1, &vao);
+	glDeleteBuffers(1, &vbo);
+	glDeleteBuffers(1, &ebo);
+
+	glfwTerminate();
+
+	return EXIT_SUCCESS;
+}
+#endif
+
+/*2d���ƺͶ���������任*/
+#if 0
+int main(int argc, char *argv[])
+{
+	//initialize GLFW library
+	glfwInit();
+
+	//set all the required options for GLFW
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+	glfwWindowHint(GLFW_RESIZABLE, GL_FALSE);
+
+	//create a window
+	GLFWwindow *window = glfwCreateWindow(WIDTH, HEIGHT, "LearnOpenGL", nullptr, nullptr);
+	if (nullptr == window) {
+		cerr << "Failed to create GLFW window" << endl;
+		glfwTerminate();
+		return EXIT_FAILURE;
+	}
+	glfwMakeContextCurrent(window);
+
+	// Set the required callback functions  
+	glfwSetKeyCallback(window, key_callback);
+
+	glewExperimental = GL_TRUE;
+
+	//init glew
+	GLenum err = glewInit();
+	if (GLEW_OK != err) {
+		cerr << "Failed to initialize GLEW " << glewGetErrorString(err) << endl;
+		return EXIT_FAILURE;
+	}
+
+	//define the viewport dimensions
+	int width, height;
+	glfwGetFramebufferSize(window, &width, &height);
+	glViewport(0, 0, width, height);
+
+	//����shader����
+	map<GLenum, const GLchar*> shaderPath;
+	shaderPath.emplace(GL_VERTEX_SHADER, "ShaderSrc/nanosuitvs.glsl");
+	shaderPath.emplace(GL_FRAGMENT_SHADER, "ShaderSrc/shader.frag");
+	ShaderProgram shaderProgram(shaderPath);
+
+	//ʹ������
+	GLuint texture[2];
+	glGenTextures(2, texture);
+
+	glBindTexture(GL_TEXTURE_2D, texture[0]);
+	//���û��Ʒ�ʽ
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);//GL_CLAMP_TO_EDGE
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	//���˷�ʽ		
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);//GL_LINEAR
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+	//���ز���������
+	unsigned char *image = SOIL_load_image("Texture/container.jpg", &width, &height, 0, SOIL_LOAD_RGB);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, image);
+	glGenerateMipmap(GL_TEXTURE_2D);
+	SOIL_free_image_data(image);
+
+	glBindTexture(GL_TEXTURE_2D, texture[1]);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	image = SOIL_load_image("Texture/awesomeface.png", &width, &height, 0, SOIL_LOAD_RGB);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, image);
+	glGenerateMipmap(GL_TEXTURE_2D);
+	SOIL_free_image_data(image);
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+	GLfloat vertices[] = {
+		//     ---- λ�� ----       ---- ��ɫ ----     - �������� -
+		0.5f,  0.5f, 0.0f,   1.0f, 0.0f, 0.0f,   1.0f, 1.0f,   // ����
+		0.5f, -0.5f, 0.0f,   0.0f, 1.0f, 0.0f,   1.0f, 0.0f,   // ����
+		-0.5f, -0.5f, 0.0f,   0.0f, 0.0f, 1.0f,   0.0f, 0.0f,   // ����
+		-0.5f,  0.5f, 0.0f,   1.0f, 1.0f, 0.0f,   0.0f, 1.0f    // ����
+	};
+
+	/*
+	GLfloat vertices[] = {
+	//     ---- λ�� ----       ---- ��ɫ ----     - �������� -
+	0.5f,  0.5f, 0.0f,   1.0f, 0.0f, 0.0f,   4.0f, 4.0f,   // ����
+	0.5f, -0.5f, 0.0f,   0.0f, 1.0f, 0.0f,   4.0f, 0.0f,   // ����
+	-0.5f, -0.5f, 0.0f,   0.0f, 0.0f, 1.0f,   0.0f, 0.0f,   // ����
+	-0.5f,  0.5f, 0.0f,   1.0f, 1.0f, 0.0f,   0.0f, 4.0f    // ����
+	};
+	*/
+	/*
+	GLfloat vertices[] = {
+	// Positions          // Colors           // Texture Coords  (Note that we changed them to 'zoom in' on our texture image)
+	0.5f,  0.5f, 0.0f,   1.0f, 0.0f, 0.0f,   0.55f, 0.55f,  // Top Right
+	0.5f, -0.5f, 0.0f,   0.0f, 1.0f, 0.0f,   0.55f, 0.45f, // Bottom Right
+	-0.5f, -0.5f, 0.0f,   0.0f, 0.0f, 1.0f,   0.45f, 0.45f, // Bottom Left
+	-0.5f,  0.5f, 0.0f,   1.0f, 1.0f, 0.0f,   0.45f, 0.55f  // Top Left
+	};
+	*/
+	GLuint indices[] = {  // Note that we start from 0!
+		0, 1, 3,  // First Triangle
+		1, 2, 3   // Second Triangle
+	};
+
+	GLuint vao, vbo, ebo;
+	glGenVertexArrays(1, &vao);
+	glGenBuffers(1, &vbo);
+	glGenBuffers(1, &ebo);
+	// Bind the Vertex Array object first, then bind and set vertex buffer(s) and attribute pointer(s).
+	glBindVertexArray(vao);
+
+	glBindBuffer(GL_ARRAY_BUFFER, vbo);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+
+	//λ������
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (GLvoid*)0);
+	glEnableVertexAttribArray(0);
+
+	//��ɫ����
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (GLvoid*)(3 * sizeof(GLfloat)));
+	glEnableVertexAttribArray(1);
+
+	//��������
+	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (GLvoid*)(6 * sizeof(GLfloat)));
+	glEnableVertexAttribArray(2);
+
+	glBindVertexArray(0);
+
+	GLfloat timeValue = 1.0f;
+	GLfloat stepx = 0;
+	GLint vertexColorLocation = 0;
+
+	//����任
+	//glm::mat4 trans;
+	//trans = glm::rotate(trans, glm::radians(90.0f), glm::vec3(0.0, 0.0, 1.0));
+	//trans = glm::scale(trans, glm::vec3(0.5, 0.5, 0.5));
+
+	while (!glfwWindowShouldClose(window)) {
+		// Check if any events have been activiated (key pressed, mouse moved etc.) and call corresponding response functions  
+		glfwPollEvents();
+
+		// Clear the colorbuffer  
+		glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT);
+
+		glUseProgram(shaderProgram.getProgramId());//������ɫ������
+
+												   //draw rectangle
+		timeValue = glfwGetTime();
+		//stepx = sin(timeValue);
+		stepx = 0.0f;
+		vertexColorLocation = glGetUniformLocation(shaderProgram.getProgramId(), "stepx");
+		glUniform1f(vertexColorLocation, stepx);
+
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, texture[0]);
+		glUniform1i(glGetUniformLocation(shaderProgram.getProgramId(), "texture2d"), 0);
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, texture[1]);
+		glUniform1i(glGetUniformLocation(shaderProgram.getProgramId(), "texture2d1"), 1);
+
+		glUniform1f(glGetUniformLocation(shaderProgram.getProgramId(), "mixWeight"), mixValue);
+
+		glm::mat4 trans;
+		GLuint transformLoc;
+		trans = glm::translate(trans, glm::vec3(0.5f, -0.5f, 0.0f));
+		trans = glm::rotate(trans, glm::radians(timeValue * 10.0f), glm::vec3(0.0, 0.0, 1.0));
+		transformLoc = glGetUniformLocation(shaderProgram.getProgramId(), "transform");
+		glUniformMatrix4fv(transformLoc, 1, GL_FALSE, glm::value_ptr(trans));
+
+		//Draw
+		glBindVertexArray(vao);
+		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+
+		trans = glm::mat4();
+		trans = glm::translate(trans, glm::vec3(-0.5f, 0.5f, 0.0f));
+		trans = glm::scale(trans, sin(timeValue) * glm::vec3(1.0f, 1.0f, 1.0f));
+		transformLoc = glGetUniformLocation(shaderProgram.getProgramId(), "transform");
+		glUniformMatrix4fv(transformLoc, 1, GL_FALSE, glm::value_ptr(trans));
+
+		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+		glBindVertexArray(0);
+
+		// Swap the screen buffers, double buffer
+		glfwSwapBuffers(window);
+	}
+
+	glDeleteVertexArrays(1, &vao);
+	glDeleteBuffers(1, &vbo);
+	glDeleteBuffers(1, &ebo);
+
+	glfwTerminate();
+
+	return EXIT_SUCCESS;
+}
+
+#endif
+
+/*��򵥵�ʵ��*/
+#if 0
+
+//shaders
+const GLchar *vertexShaderSource = "#version 330 core\n"
+"layout (location = 0) in vec3 position;\n"
+"out vec4 vertexColor;\n"
+"void main()\n"
+"{\n"
+"gl_Position = vec4(position.x, position.y, position.z, 1.0);\n"
+"vertexColor = vec4(0.0f, 0.0f, 0.0f, 1.0f);\n"
+"}\0";
+
+const GLchar *fragmentShaderSource = "#version 330 core\n"
+"in vec4 vertexColor;\n"
+"uniform float greenColor;\n"
+"out vec4 color;\n"
+"void main()\n"
+"{\n"
+"color = vec4(vertexColor.r, greenColor, vertexColor.b, vertexColor.a);\n"
+"}\n\0";
+
+//shaders:more attribute
+const GLchar *vertexShaderSourceMore = "#version 330 core\n"
+"layout (location = 0) in vec3 position;\n"
+"layout (location = 1) in vec3 color;\n"
+"uniform float stepx;\n"
+"out vec3 vertexColor;\n"
+"void main()\n"
+"{\n"
+"gl_Position = vec4(position.x + stepx, -position.y, position.z, 1.0);\n"
+"vertexColor = color;\n"
+"}\0";
+
+const GLchar *fragmentShaderSourceMore = "#version 330 core\n"
+"in vec3 vertexColor;\n"
+"out vec4 color;\n"
+"void main()\n"
+"{\n"
+"color = vec4(vertexColor, 1.0f);\n"
+"}\n\0";
+
+int main(int argc, char *argv[])
+{
+	//initialize GLFW library
+	glfwInit();
+
+	//set all the required options for GLFW
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+	//avoid using old function
+	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+	glfwWindowHint(GLFW_RESIZABLE, GL_FALSE);
+
+	//create a window
+	GLFWwindow *window = glfwCreateWindow(WIDTH, HEIGHT, "LearnOpenGL", nullptr, nullptr);
+	if (nullptr == window) {
+		cerr << "Failed to create GLFW window" << endl;
+		glfwTerminate();
+		return EXIT_FAILURE;
+	}
+	glfwMakeContextCurrent(window);
+
+	// Set the required callback functions  
+	glfwSetKeyCallback(window, key_callback);
+
+	glewExperimental = GL_TRUE;
+
+	//init glew
+	GLenum err = glewInit();
+	if (GLEW_OK != err) {
+		cerr << "Failed to initialize GLEW " << glewGetErrorString(err) << endl;
+		return EXIT_FAILURE;
+	}
+
+	//define the viewport dimensions
+	int width, height;
+	glfwGetFramebufferSize(window, &width, &height);
+	glViewport(0, 0, width, height);
+
+	//bulid and compile shader program
+	// Vertex shader
+	GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
+	glShaderSource(vertexShader, 1, &vertexShaderSourceMore, nullptr);
+	glCompileShader(vertexShader);
+
+	GLint success;
+	GLchar infoLog[512];
+	glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &success);
+	if (!success) {
+		glGetShaderInfoLog(vertexShader, 512, nullptr, infoLog);
+		cerr << "ERROR::SHADER::VERTEX::COMPILATION_FAILED" << endl << infoLog << endl;
+	}
+	// Fragment shader
+	GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+	glShaderSource(fragmentShader, 1, &fragmentShaderSourceMore, nullptr);
+	glCompileShader(fragmentShader);
+
+	glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &success);
+	if (!success) {
+		glGetShaderInfoLog(fragmentShader, 512, nullptr, infoLog);
+		cerr << "ERROR::SHADER::FRAGMENT::COMPILATION_FAILED\n" << infoLog << endl;
+	}
+
+	//link shaders
+	GLuint shaderProgram = glCreateProgram();
+	glAttachShader(shaderProgram, vertexShader);
+	glAttachShader(shaderProgram, fragmentShader);
+	glLinkProgram(shaderProgram);
+	//check
+	glGetProgramiv(shaderProgram, GL_LINK_STATUS, &success);
+	if (!success) {
+		glGetProgramInfoLog(shaderProgram, 512, nullptr, infoLog);
+		cerr << "ERROR::SHADER::PROGRAM::LINK_FAILED\n" << infoLog << endl;
+	}
+	glDeleteShader(vertexShader);
+	glDeleteShader(fragmentShader);
+
+	GLuint vao, vbo, ebo;
+	//setVaoVboEboForTri(&vao, &vbo, &ebo);
+	//setVaoVboEboForRect(&vao, &vbo, &ebo);
+	setVaoVboEboForTriMoreAttribute(&vao, &vbo, &ebo);
+
+	GLfloat timeValue = 1.0f, greenValue = 0.0f;
+	GLfloat stepx = 0;
+	GLint vertexColorLocation = 0;
+
+	while (!glfwWindowShouldClose(window)){
+		// Check if any events have been activiated (key pressed, mouse moved etc.) and call corresponding response functions  
+		glfwPollEvents();
+
+		// Clear the colorbuffer  
+		glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT);
+
+		//draw rectangle
+		//drawTri(&shaderProgram, &vao, &vbo, &ebo);
+		timeValue = glfwGetTime();
+		//greenValue = (sin(timeValue) / 2) + 0.5;
+		stepx = sin(timeValue);
+		vertexColorLocation = glGetUniformLocation(shaderProgram, "stepx");
+
+		glUseProgram(shaderProgram);//������ɫ������
+		glUniform1f(vertexColorLocation,stepx);
+		glBindVertexArray(vao);
+		//glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+		glDrawArrays(GL_TRIANGLES, 0, 3);
+		glBindVertexArray(0);
+
+		//drawRect(&shaderProgram, &vao, &vbo, &ebo);
+
+		// Swap the screen buffers, double buffer
+		glfwSwapBuffers(window);
+	}
+
+	deSetVaoVboEbo(&vao, &vbo, &ebo);
+
+	glfwTerminate();
+	
+	return EXIT_SUCCESS;
+}
+#endif
+
+/*��������*/
+#if 0
+GLfloat vertices3d[] = {
+	-0.5f, -0.5f, -0.5f,  0.0f, 0.0f,
+	0.5f, -0.5f, -0.5f,  1.0f, 0.0f,
+	0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+	0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+	-0.5f,  0.5f, -0.5f,  0.0f, 1.0f,
+	-0.5f, -0.5f, -0.5f,  0.0f, 0.0f,
+
+	-0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+	0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
+	0.5f,  0.5f,  0.5f,  1.0f, 1.0f,
+	0.5f,  0.5f,  0.5f,  1.0f, 1.0f,
+	-0.5f,  0.5f,  0.5f,  0.0f, 1.0f,
+	-0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+
+	-0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+	-0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+	-0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+	-0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+	-0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+	-0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+
+	0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+	0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+	0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+	0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+	0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+	0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+
+	-0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+	0.5f, -0.5f, -0.5f,  1.0f, 1.0f,
+	0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
+	0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
+	-0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+	-0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+
+	-0.5f,  0.5f, -0.5f,  0.0f, 1.0f,
+	0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+	0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+	0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+	-0.5f,  0.5f,  0.5f,  0.0f, 0.0f,
+	-0.5f,  0.5f, -0.5f,  0.0f, 1.0f
+	};
+GLfloat vertices[] = {
+	//     ---- λ�� ----       ---- ��ɫ ----     - �������� -
+	0.5f,  0.5f, 0.0f,   1.0f, 0.0f, 0.0f,   1.0f, 1.0f,   // ����
+	0.5f, -0.5f, 0.0f,   0.0f, 1.0f, 0.0f,   1.0f, 0.0f,   // ����
+	-0.5f, -0.5f, 0.0f,   0.0f, 0.0f, 1.0f,   0.0f, 0.0f,   // ����
+	-0.5f,  0.5f, 0.0f,   1.0f, 1.0f, 0.0f,   0.0f, 1.0f    // ����
+};
+#endif
